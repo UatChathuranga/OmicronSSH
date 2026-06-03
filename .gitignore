@@ -1,0 +1,36 @@
+# Dependency directories
+node_modules/
+
+# Production builds
+dist/
+dist-ssr/
+*.local
+
+# Electron-builder distribution packages
+release/
+
+# Local databases, keys, and session configs
+data/
+*.key
+*.db
+connections.json
+
+# IDEs and editors
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*

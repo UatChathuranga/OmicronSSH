@@ -1,0 +1,366 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { Terminal } from 'xterm';
+import { FitAddon } from 'xterm-addon-fit';
+import SftpExplorer from './SftpExplorer';
+import 'xterm/css/xterm.css';
+
+export default function TerminalTab({ tab, onStatusChange }) {
+  const containerRef = useRef(null);
+  const terminalRef = useRef(null);
+  const fitAddonRef = useRef(null);
+  const socketRef = useRef(null);
+  const [status, setStatus] = useState('connecting'); // 'connecting', 'connected', 'disconnected'
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [viewMode, setViewMode] = useState('terminal'); // 'terminal' or 'files'
+
+  const statusRef = useRef('connecting');
+  const viewModeRef = useRef('terminal');
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  useEffect(() => {
+    viewModeRef.current = viewMode;
+  }, [viewMode]);
+
+  const connectSSH = () => {
+    setStatus('connecting');
+    setErrorMsg(null);
+
+    // Initialize Terminal if not already done
+    if (!terminalRef.current) {
+      const term = new Terminal({
+        cursorBlink: true,
+        fontFamily: 'var(--font-mono)',
+        fontSize: 14,
+        lineHeight: 1.2,
+        theme: {
+          background: '#0a0d16',
+          foreground: '#e2e8f0',
+          cursor: '#6366f1',
+          selectionBackground: 'rgba(99, 102, 241, 0.3)',
+          black: '#0f172a',
+          red: '#ef4444',
+          green: '#10b981',
+          yellow: '#f59e0b',
+          blue: '#3b82f6',
+          magenta: '#a855f7',
+          cyan: '#06b6d4',
+          white: '#f8fafc',
+          brightBlack: '#475569',
+          brightRed: '#f87171',
+          brightGreen: '#34d399',
+          brightYellow: '#fbbf24',
+          brightBlue: '#60a5fa',
+          brightMagenta: '#c084fc',
+          brightCyan: '#22d3ee',
+          brightWhite: '#ffffff'
+        }
+      });
+
+      // Highlighted selection copies to system clipboard automatically
+      term.onSelectionChange(() => {
+        const selection = term.getSelection();
+        if (selection && selection.trim().length > 0) {
+          navigator.clipboard.writeText(selection).catch(err => {
+            console.error('Failed to copy selection to clipboard:', err);
+          });
+        }
+      });
+
+      const fitAddon = new FitAddon();
+      term.loadAddon(fitAddon);
+
+      terminalRef.current = term;
+      fitAddonRef.current = fitAddon;
+    }
+
+    const term = terminalRef.current;
+    const fitAddon = fitAddonRef.current;
+
+    // Reset terminal content
+    term.clear();
+    term.reset();
+    term.write('\r\n\x1b[36mConnecting to SSH remote host...\x1b[0m\r\n');
+
+    // Establish WebSocket Connection
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsHost = window.location.host;
+    const wsUrl = `${wsProtocol}//${wsHost}/ws`;
+
+    const socket = new WebSocket(wsUrl);
+    socketRef.current = socket;
+
+    socket.onopen = () => {
+      // Fit first to determine sizes
+      if (containerRef.current) {
+        fitAddon.fit();
+      }
+
+      const cols = term.cols || 80;
+      const rows = term.rows || 24;
+
+      // Construct and send the init payload
+      const initPayload = {
+        type: 'init',
+        tabId: tab.id,
+        cols,
+        rows
+      };
+
+      if (tab.connectionId) {
+        initPayload.connectionId = tab.connectionId;
+      } else if (tab.quickConnectDetails) {
+        // Quick connect parameters
+        Object.assign(initPayload, tab.quickConnectDetails);
+      }
+
+      socket.send(JSON.stringify(initPayload));
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+
+        if (msg.type === 'status') {
+          setStatus(msg.status);
+          onStatusChange(tab.id, msg.status);
+          if (msg.error) {
+            setErrorMsg(msg.error);
+            term.write(`\r\n\x1b[31mSSH Error: ${msg.error}\x1b[0m\r\n`);
+          }
+        } else if (msg.type === 'data') {
+          term.write(colorizeText(msg.data));
+        }
+      } catch (err) {
+        console.error('Failed to parse WebSocket message:', err);
+      }
+    };
+
+    socket.onerror = (err) => {
+      console.error('WebSocket encountered an error:', err);
+      setStatus('disconnected');
+      onStatusChange(tab.id, 'disconnected');
+      setErrorMsg('WebSocket connection error.');
+    };
+
+    socket.onclose = () => {
+      setStatus('disconnected');
+      onStatusChange(tab.id, 'disconnected');
+    };
+
+    // Attach local term keystroke listener to WebSocket
+    term.onData((data) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'data', data }));
+      }
+    });
+
+    // Attach terminal resize listener to WebSocket
+    term.onResize((size) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+          type: 'resize',
+          cols: size.cols,
+          rows: size.rows
+        }));
+      }
+    });
+  };
+
+  useEffect(() => {
+    // Connect SSH on mount
+    connectSSH();
+
+    // Mount terminal DOM element
+    if (containerRef.current && terminalRef.current) {
+      terminalRef.current.open(containerRef.current);
+      fitAddonRef.current.fit();
+    }
+
+    // Intercept right click (contextmenu) to paste from system clipboard
+    // Intercept right click (contextmenu) to paste from system clipboard
+    const handleContextMenu = (e) => {
+      if (viewModeRef.current !== 'terminal') return; // Do not intercept context menu in SFTP view
+      e.preventDefault();
+      navigator.clipboard.readText()
+        .then(text => {
+          if (text && socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            socketRef.current.send(JSON.stringify({ type: 'data', data: text }));
+          }
+        })
+        .catch(err => {
+          console.error('Failed to read from clipboard for paste:', err);
+        });
+    };
+
+    const el = containerRef.current;
+    if (el) {
+      el.addEventListener('contextmenu', handleContextMenu);
+    }
+
+    // Set up ResizeObserver to handle element size changes reactively
+    const resizeObserver = new ResizeObserver(() => {
+      if (terminalRef.current && fitAddonRef.current && statusRef.current === 'connected' && viewModeRef.current === 'terminal') {
+        try {
+          fitAddonRef.current.fit();
+        } catch (err) {
+          // Ignore dimensions failures when container has 0 height temporarily
+        }
+      }
+    });
+
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    // Cleanup on unmount
+    return () => {
+      resizeObserver.disconnect();
+      if (el) {
+        el.removeEventListener('contextmenu', handleContextMenu);
+      }
+      if (socketRef.current) {
+        socketRef.current.close();
+      }
+      if (terminalRef.current) {
+        terminalRef.current.dispose();
+        terminalRef.current = null;
+      }
+    };
+  }, []);
+
+  // Refit whenever terminal status shifts to connected (ensures prompt size maps correctly)
+  useEffect(() => {
+    if (status === 'connected' && terminalRef.current && fitAddonRef.current) {
+      setTimeout(() => {
+        try {
+          fitAddonRef.current.fit();
+          // Send active resize update to remote host
+          const cols = terminalRef.current.cols;
+          const rows = terminalRef.current.rows;
+          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            socketRef.current.send(JSON.stringify({ type: 'resize', cols, rows }));
+          }
+        } catch (err) {
+          console.error('Post-connection resize alignment failed:', err);
+        }
+      }, 100);
+    }
+  }, [status]);
+
+  // Refit terminal when switching views
+  useEffect(() => {
+    if (viewMode === 'terminal' && status === 'connected' && terminalRef.current && fitAddonRef.current) {
+      setTimeout(() => {
+        try {
+          fitAddonRef.current.fit();
+        } catch (err) {
+          // Ignore
+        }
+      }, 50);
+    }
+  }, [viewMode, status]);
+
+  return (
+    <div className="terminal-wrapper">
+      {status === 'connected' && (
+        <div className="terminal-mode-selector">
+          <button 
+            className={`mode-btn ${viewMode === 'terminal' ? 'active' : ''}`}
+            onClick={() => setViewMode('terminal')}
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Console
+          </button>
+          <button 
+            className={`mode-btn ${viewMode === 'files' ? 'active' : ''}`}
+            onClick={() => setViewMode('files')}
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
+            Files (SFTP)
+          </button>
+        </div>
+      )}
+
+      <div 
+        className="terminal-canvas" 
+        ref={containerRef} 
+        style={{ display: viewMode === 'terminal' ? 'block' : 'none' }} 
+      />
+
+      {viewMode === 'files' && status === 'connected' && (
+        <SftpExplorer tabId={tab.id} />
+      )}
+      
+      {status === 'connecting' && (
+        <div className="terminal-overlay">
+          <div className="terminal-overlay-spinner" />
+          <div className="terminal-overlay-title">Establishing Connection...</div>
+          <div className="terminal-overlay-desc">
+            Connecting to {tab.quickConnectDetails ? tab.quickConnectDetails.host : tab.title}
+          </div>
+        </div>
+      )}
+
+      {status === 'disconnected' && (
+        <div className="terminal-overlay">
+          <svg className="terminal-overlay-error-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div className="terminal-overlay-title">Connection Disconnected</div>
+          {errorMsg && <div className="terminal-overlay-desc">{errorMsg}</div>}
+          <button className="terminal-reconnect-btn" onClick={connectSSH}>
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 15H19" />
+            </svg>
+            Reconnect Session
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const colorizeText = (text) => {
+  if (!text) return text;
+  
+  const ansiRegex = /(\x1b\[[0-9;?]*[a-zA-Z])/g;
+  const parts = text.split(ansiRegex);
+  
+  return parts.map((part) => {
+    if (ansiRegex.test(part)) {
+      return part;
+    }
+    
+    let modified = part;
+    
+    // 1. Red keywords (Error, Fail, Failed, Failure, Critical) - matched anywhere
+    modified = modified.replace(/(error|fail|critical)/gi, (match) => {
+      return `\x1b[1;31m${match}\x1b[22;39m`;
+    });
+    
+    // 2. Orange keywords (Warning, Worning) - matched anywhere, (warn, warned) - matched as whole words
+    modified = modified.replace(/(warning|worning)/gi, (match) => {
+      return `\x1b[38;5;208;1m${match}\x1b[22;39m`;
+    });
+    modified = modified.replace(/\b(warn|warned)\b/gi, (match) => {
+      return `\x1b[38;5;208;1m${match}\x1b[22;39m`;
+    });
+    
+    // 3. Green keywords (Success) - matched anywhere, (ok) - matched as whole word
+    modified = modified.replace(/(success)/gi, (match) => {
+      return `\x1b[1;32m${match}\x1b[22;39m`;
+    });
+    modified = modified.replace(/\b(ok)\b/gi, (match) => {
+      return `\x1b[1;32m${match}\x1b[22;39m`;
+    });
+    
+    return modified;
+  }).join('');
+};
