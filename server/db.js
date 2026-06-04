@@ -158,7 +158,16 @@ export function bulkCreateConnections(connectionsList, groupName) {
   const connections = readDB();
   const createdList = [];
   
+  const existingGroupNames = Array.from(
+    new Set(connections.map(c => c.group || 'Default'))
+  );
+  
   for (const connData of connectionsList) {
+    const rawGroup = (connData.group || groupName || 'Default').trim();
+    const matchedGroup = existingGroupNames.find(
+      g => g.toLowerCase() === rawGroup.toLowerCase()
+    ) || rawGroup;
+
     const newConn = {
       id: crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString() + Math.random().toString().substring(2, 6)),
       name: connData.name || 'New Connection',
@@ -166,7 +175,7 @@ export function bulkCreateConnections(connectionsList, groupName) {
       port: parseInt(connData.port, 10) || 22,
       username: connData.username || 'root',
       authMethod: connData.authMethod || 'password',
-      group: groupName || 'Default',
+      group: matchedGroup,
       created: new Date().toISOString()
     };
 
@@ -178,6 +187,10 @@ export function bulkCreateConnections(connectionsList, groupName) {
 
     connections.push(newConn);
     createdList.push(newConn);
+
+    if (!existingGroupNames.some(g => g.toLowerCase() === matchedGroup.toLowerCase())) {
+      existingGroupNames.push(matchedGroup);
+    }
   }
   
   writeDB(connections);

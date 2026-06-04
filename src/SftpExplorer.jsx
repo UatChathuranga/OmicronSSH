@@ -209,6 +209,8 @@ export default function SftpExplorer({ tabId }) {
     if (e.target.files && e.target.files[0]) {
       handleUploadFile(e.target.files[0]);
     }
+    // Reset input value to allow uploading the same file again
+    e.target.value = '';
   };
 
   const handleCreateFolder = async () => {

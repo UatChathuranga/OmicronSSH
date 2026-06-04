@@ -67,8 +67,6 @@ export default function App() {
 
   // Bulk Import state
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [importGroupSelectMode, setImportGroupSelectMode] = useState('select'); // 'select' or 'new'
-  const [importGroup, setImportGroup] = useState('Default');
   const [importFile, setImportFile] = useState(null);
   const [importFileName, setImportFileName] = useState('');
   const [importRowsCount, setImportRowsCount] = useState(0);
@@ -328,8 +326,6 @@ export default function App() {
     setImportFileName('');
     setImportRowsCount(0);
     setImportError(null);
-    setImportGroup('Default');
-    setImportGroupSelectMode('select');
   };
 
   const handleFileChange = (e) => {
@@ -374,6 +370,9 @@ export default function App() {
       setImportRowsCount(0);
     };
     reader.readAsText(file);
+
+    // Reset input value to allow uploading the same file again
+    e.target.value = '';
   };
 
   const handleImportSubmit = async (e) => {
@@ -392,6 +391,7 @@ export default function App() {
       let usernameIdx = -1;
       let passwordIdx = -1;
       let sshKeyIdx = -1;
+      let groupIdx = -1;
 
       const firstLine = rows[0] || [];
       const isHeader = firstLine.some(h => {
@@ -408,6 +408,7 @@ export default function App() {
         usernameIdx = headers.indexOf('username');
         passwordIdx = headers.indexOf('password');
         sshKeyIdx = headers.indexOf('ssh key');
+        groupIdx = headers.indexOf('group');
         dataRows = rows.slice(1);
       } else {
         hostTitleIdx = 0;
@@ -416,6 +417,7 @@ export default function App() {
         usernameIdx = 3;
         passwordIdx = 4;
         sshKeyIdx = 5;
+        groupIdx = 6;
       }
 
       const parsedConnections = [];
@@ -432,6 +434,7 @@ export default function App() {
         const password = row[passwordIdx] || '';
         const ssh_key = row[sshKeyIdx] || '';
         const authMethod = ssh_key ? 'key' : 'password';
+        const group = (groupIdx !== -1 && groupIdx < row.length ? row[groupIdx] : '') || '';
 
         parsedConnections.push({
           name,
@@ -440,7 +443,8 @@ export default function App() {
           username,
           authMethod,
           password,
-          privateKey: ssh_key
+          privateKey: ssh_key,
+          group: group.trim()
         });
       }
 
@@ -452,7 +456,6 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          group: importGroup || 'Default',
           connections: parsedConnections
         })
       });
@@ -470,8 +473,6 @@ export default function App() {
       setImportFile(null);
       setImportFileName('');
       setImportRowsCount(0);
-      setImportGroup('Default');
-      setImportGroupSelectMode('select');
     } catch (err) {
       setImportError(err.message);
     } finally {
@@ -1109,9 +1110,9 @@ export default function App() {
 
               <div className="csv-format-help" style={{ marginBottom: '16px' }}>
                 <span className="help-label">Required CSV Column Order:</span>
-                <code className="format-code">host title, ip, port, username, password, ssh_key</code>
+                <code className="format-code">host title, ip, port, username, password, ssh_key, group</code>
                 <p className="help-text">
-                  Columns can be in any order if headers are present. If headers are missing, please match the column order exactly.
+                  Columns can be in any order if headers are present. If headers are missing, please match the column order exactly (with group as an optional 7th column).
                 </p>
               </div>
 
@@ -1141,48 +1142,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="form-group" style={{ marginBottom: '16px' }}>
-                <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>Target Group / Folder</span>
-                  <button 
-                    type="button" 
-                    className="text-link-btn"
-                    onClick={() => {
-                      const nextMode = importGroupSelectMode === 'select' ? 'new' : 'select';
-                      setImportGroupSelectMode(nextMode);
-                      if (nextMode === 'select') {
-                        setImportGroup('Default');
-                      } else {
-                        setImportGroup('');
-                      }
-                    }}
-                  >
-                    {importGroupSelectMode === 'select' ? '+ Create New' : 'Select Existing'}
-                  </button>
-                </label>
-                {importGroupSelectMode === 'select' ? (
-                  <select
-                    className="form-select"
-                    value={importGroup || 'Default'}
-                    onChange={(e) => setImportGroup(e.target.value)}
-                  >
-                    <option value="Default">Default</option>
-                    {existingGroups.map(g => (
-                      <option key={g} value={g}>{g}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="e.g. Production Webservers"
-                    required
-                    value={importGroup}
-                    onChange={(e) => setImportGroup(e.target.value)}
-                    autoFocus
-                  />
-                )}
-              </div>
+
             </div>
 
             <div className="modal-footer">
