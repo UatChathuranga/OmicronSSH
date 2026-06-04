@@ -154,6 +154,36 @@ export function createConnection(connData) {
   return newConn;
 }
 
+export function bulkCreateConnections(connectionsList, groupName) {
+  const connections = readDB();
+  const createdList = [];
+  
+  for (const connData of connectionsList) {
+    const newConn = {
+      id: crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString() + Math.random().toString().substring(2, 6)),
+      name: connData.name || 'New Connection',
+      host: connData.host || 'localhost',
+      port: parseInt(connData.port, 10) || 22,
+      username: connData.username || 'root',
+      authMethod: connData.authMethod || 'password',
+      group: groupName || 'Default',
+      created: new Date().toISOString()
+    };
+
+    if (newConn.authMethod === 'password' && connData.password) {
+      newConn.password = encrypt(connData.password);
+    } else if (newConn.authMethod === 'key' && connData.privateKey) {
+      newConn.privateKey = encrypt(connData.privateKey);
+    }
+
+    connections.push(newConn);
+    createdList.push(newConn);
+  }
+  
+  writeDB(connections);
+  return createdList;
+}
+
 export function updateConnection(id, connUpdate) {
   const connections = readDB();
   const index = connections.findIndex(c => c.id === id);

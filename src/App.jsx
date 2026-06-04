@@ -4,6 +4,41 @@ import './App.css';
 import pkg from '../package.json';
 import logo from '../build/icon.png';
 
+// Robust RFC 4180-compliant CSV parser helper
+function parseCSV(text) {
+  const lines = [];
+  let row = [''];
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        row[row.length - 1] += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      row.push('');
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') {
+        i++;
+      }
+      lines.push(row.map(cell => cell.trim()));
+      row = [''];
+    } else {
+      row[row.length - 1] += char;
+    }
+  }
+  if (row.length > 1 || row[0] !== '') {
+    lines.push(row.map(cell => cell.trim()));
+  }
+  return lines;
+}
+
 export default function App() {
   const productName = pkg.build?.productName || "OmicronSSH";
   const { version } = pkg;
@@ -28,6 +63,17 @@ export default function App() {
   // Sidebar state
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState(null); // { x: number, y: number, tab: object }
+
+  // Bulk Import state
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importGroupSelectMode, setImportGroupSelectMode] = useState('select'); // 'select' or 'new'
+  const [importGroup, setImportGroup] = useState('Default');
+  const [importFile, setImportFile] = useState(null);
+  const [importFileName, setImportFileName] = useState('');
+  const [importRowsCount, setImportRowsCount] = useState(0);
+  const [importError, setImportError] = useState(null);
+  const [isImporting, setIsImporting] = useState(false);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -65,6 +111,35 @@ export default function App() {
 
   useEffect(() => {
     fetchConnections();
+  }, []);
+
+  // Prevent page reload via browser shortcuts globally
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const isR = e.key.toLowerCase() === 'r';
+      const isF5 = e.key === 'F5';
+      const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+
+      if ((isCtrlOrMeta && isR) || isF5) {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  // Close context menu on window clicks
+  useEffect(() => {
+    const handleWindowClick = () => {
+      setContextMenu(null);
+    };
+    window.addEventListener('click', handleWindowClick);
+    return () => {
+      window.removeEventListener('click', handleWindowClick);
+    };
   }, []);
 
   // CRUD handlers
@@ -205,8 +280,33 @@ export default function App() {
     setActiveTabId(newTabId);
   };
 
+  const handleDuplicateTab = (tabToDuplicate) => {
+    if (tabToDuplicate.type !== 'terminal') return;
+
+    const newTabId = `tab-${Date.now()}`;
+    const newTab = {
+      ...tabToDuplicate,
+      id: newTabId,
+      title: tabToDuplicate.title,
+      status: 'connecting'
+    };
+
+    setTabs([...tabs, newTab]);
+    setActiveTabId(newTabId);
+  };
+
+  const handleTabContextMenu = (e, tab) => {
+    e.preventDefault();
+    if (tab.type !== 'terminal') return;
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      tab
+    });
+  };
+
   const handleCloseTab = (tabId, e) => {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     const updatedTabs = tabs.filter(t => t.id !== tabId);
     
     if (updatedTabs.length === 0) {
@@ -219,6 +319,163 @@ export default function App() {
         // Switch to the last tab in list
         setActiveTabId(updatedTabs[updatedTabs.length - 1].id);
       }
+    }
+  };
+
+  const handleOpenImportModal = () => {
+    setIsImportModalOpen(true);
+    setImportFile(null);
+    setImportFileName('');
+    setImportRowsCount(0);
+    setImportError(null);
+    setImportGroup('Default');
+    setImportGroupSelectMode('select');
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    setImportFileName(file.name);
+    setImportError(null);
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      try {
+        const rows = parseCSV(text);
+        if (rows.length === 0) {
+          throw new Error('The CSV file is empty.');
+        }
+        
+        // Find isHeader
+        const firstLine = rows[0] || [];
+        const isHeader = firstLine.some(h => {
+          const norm = h.toLowerCase().replace(/_/g, ' ').trim();
+          return norm === 'host title' || norm === 'ip' || norm === 'username';
+        });
+        
+        const dataRowsCount = isHeader ? rows.length - 1 : rows.length;
+        if (dataRowsCount <= 0) {
+          throw new Error('No data rows found in the CSV file.');
+        }
+        
+        setImportRowsCount(dataRowsCount);
+        setImportFile(text);
+      } catch (err) {
+        setImportError(err.message);
+        setImportFile(null);
+        setImportRowsCount(0);
+      }
+    };
+    reader.onerror = () => {
+      setImportError('Failed to read the file.');
+      setImportFile(null);
+      setImportRowsCount(0);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImportSubmit = async (e) => {
+    e.preventDefault();
+    if (!importFile || isImporting) return;
+    
+    setIsImporting(true);
+    setImportError(null);
+    
+    try {
+      const rows = parseCSV(importFile);
+      
+      let hostTitleIdx = -1;
+      let ipIdx = -1;
+      let portIdx = -1;
+      let usernameIdx = -1;
+      let passwordIdx = -1;
+      let sshKeyIdx = -1;
+
+      const firstLine = rows[0] || [];
+      const isHeader = firstLine.some(h => {
+        const norm = h.toLowerCase().replace(/_/g, ' ').trim();
+        return norm === 'host title' || norm === 'ip' || norm === 'username';
+      });
+
+      let dataRows = rows;
+      if (isHeader) {
+        const headers = firstLine.map(h => h.toLowerCase().replace(/_/g, ' ').trim());
+        hostTitleIdx = headers.indexOf('host title');
+        ipIdx = headers.indexOf('ip');
+        portIdx = headers.indexOf('port');
+        usernameIdx = headers.indexOf('username');
+        passwordIdx = headers.indexOf('password');
+        sshKeyIdx = headers.indexOf('ssh key');
+        dataRows = rows.slice(1);
+      } else {
+        hostTitleIdx = 0;
+        ipIdx = 1;
+        portIdx = 2;
+        usernameIdx = 3;
+        passwordIdx = 4;
+        sshKeyIdx = 5;
+      }
+
+      const parsedConnections = [];
+      for (const row of dataRows) {
+        if (row.length === 0 || (row.length === 1 && row[0] === '')) continue;
+        
+        // Host (IP) is strictly required
+        const host = row[ipIdx] || '';
+        if (!host) continue;
+
+        const name = row[hostTitleIdx] || host;
+        const port = row[portIdx] || '22';
+        const username = row[usernameIdx] || 'root';
+        const password = row[passwordIdx] || '';
+        const ssh_key = row[sshKeyIdx] || '';
+        const authMethod = ssh_key ? 'key' : 'password';
+
+        parsedConnections.push({
+          name,
+          host,
+          port,
+          username,
+          authMethod,
+          password,
+          privateKey: ssh_key
+        });
+      }
+
+      if (parsedConnections.length === 0) {
+        throw new Error('No valid connections found. Check that the "ip" or host field is filled.');
+      }
+
+      const response = await fetch('/api/connections/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          group: importGroup || 'Default',
+          connections: parsedConnections
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to save connections.');
+      }
+
+      // Success! Fetch connections and close modal
+      await fetchConnections();
+      setIsImportModalOpen(false);
+      
+      // Reset state
+      setImportFile(null);
+      setImportFileName('');
+      setImportRowsCount(0);
+      setImportGroup('Default');
+      setImportGroupSelectMode('select');
+    } catch (err) {
+      setImportError(err.message);
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -269,11 +526,18 @@ export default function App() {
             <img src={logo} alt="Logo" className="logo-img" />
             <span>{productName}</span>
           </div>
-          <button className="add-conn-btn" onClick={handleOpenCreateModal} title="Add Connection">
-            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
+          <div className="header-actions">
+            <button className="bulk-import-btn" onClick={handleOpenImportModal} title="Bulk Import CSV">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+            </button>
+            <button className="add-conn-btn" onClick={handleOpenCreateModal} title="Add Connection">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div className="sidebar-search-container">
@@ -396,6 +660,7 @@ export default function App() {
                 key={tab.id}
                 className={`tab-item ${activeTabId === tab.id ? 'active' : ''}`}
                 onClick={() => setActiveTabId(tab.id)}
+                onContextMenu={(e) => handleTabContextMenu(e, tab)}
               >
                 <div className={`tab-status-glow ${tab.status}`} />
                 <span className="tab-title">{tab.title}</span>
@@ -782,6 +1047,162 @@ export default function App() {
               Close
             </button>
           </div>
+        </div>
+      </div>
+
+      {contextMenu && (
+        <div 
+          className="tab-context-menu"
+          style={{ 
+            top: contextMenu.y, 
+            left: contextMenu.x,
+            position: 'fixed',
+            zIndex: 9999
+          }}
+        >
+          <div 
+            className="context-menu-item"
+            onClick={() => {
+              handleDuplicateTab(contextMenu.tab);
+              setContextMenu(null);
+            }}
+          >
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+            </svg>
+            <span>Duplicate Session</span>
+          </div>
+          <div 
+            className="context-menu-item close"
+            onClick={() => {
+              handleCloseTab(contextMenu.tab.id);
+              setContextMenu(null);
+            }}
+          >
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            <span>Close Tab</span>
+          </div>
+        </div>
+      )}
+
+      {/* BULK IMPORT MODAL OVERLAY */}
+      <div className={`modal-overlay ${isImportModalOpen ? 'open' : ''}`}>
+        <div className="modal-container glass-panel bulk-import-modal">
+          <div className="modal-header">
+            <div className="modal-title">Bulk Import Connections</div>
+            <button className="modal-close-btn" onClick={() => setIsImportModalOpen(false)}>
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          <form onSubmit={handleImportSubmit}>
+            <div className="modal-body">
+              {importError && (
+                <div className="error-banner" style={{ marginBottom: '14px' }}>
+                  {importError}
+                </div>
+              )}
+
+              <div className="csv-format-help" style={{ marginBottom: '16px' }}>
+                <span className="help-label">Required CSV Column Order:</span>
+                <code className="format-code">host title, ip, port, username, password, ssh_key</code>
+                <p className="help-text">
+                  Columns can be in any order if headers are present. If headers are missing, please match the column order exactly.
+                </p>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label className="form-label">Select CSV File</label>
+                <div className="file-upload-wrapper">
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="file-upload-input"
+                    id="csv-file-input"
+                    onChange={handleFileChange}
+                    style={{ display: 'none' }}
+                  />
+                  <label htmlFor="csv-file-input" className="file-upload-label-btn">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" height="20">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span>{importFileName ? 'Change CSV File' : 'Choose CSV File'}</span>
+                  </label>
+                  {importFileName && (
+                    <div className="file-upload-info">
+                      <span className="file-name-text">{importFileName}</span>
+                      <span className="file-rows-badge">{importRowsCount} connection{importRowsCount !== 1 ? 's' : ''} detected</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Target Group / Folder</span>
+                  <button 
+                    type="button" 
+                    className="text-link-btn"
+                    onClick={() => {
+                      const nextMode = importGroupSelectMode === 'select' ? 'new' : 'select';
+                      setImportGroupSelectMode(nextMode);
+                      if (nextMode === 'select') {
+                        setImportGroup('Default');
+                      } else {
+                        setImportGroup('');
+                      }
+                    }}
+                  >
+                    {importGroupSelectMode === 'select' ? '+ Create New' : 'Select Existing'}
+                  </button>
+                </label>
+                {importGroupSelectMode === 'select' ? (
+                  <select
+                    className="form-select"
+                    value={importGroup || 'Default'}
+                    onChange={(e) => setImportGroup(e.target.value)}
+                  >
+                    <option value="Default">Default</option>
+                    {existingGroups.map(g => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Production Webservers"
+                    required
+                    value={importGroup}
+                    onChange={(e) => setImportGroup(e.target.value)}
+                    autoFocus
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button 
+                type="button" 
+                className="btn-secondary" 
+                onClick={() => setIsImportModalOpen(false)}
+                disabled={isImporting}
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                className="btn-primary"
+                disabled={!importFile || isImporting}
+              >
+                {isImporting ? 'Importing...' : `Import ${importRowsCount ? importRowsCount : ''} Session${importRowsCount !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>

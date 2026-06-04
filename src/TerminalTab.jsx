@@ -69,6 +69,26 @@ export default function TerminalTab({ tab, onStatusChange }) {
         }
       });
 
+      // Attach custom key event handler to allow standard browser shortcuts
+      term.attachCustomKeyEventHandler((e) => {
+        const isF = e.key.toLowerCase() === 'f';
+        const isR = e.key.toLowerCase() === 'r';
+        const isF5 = e.key === 'F5';
+        const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+
+        // Allow Ctrl+F / Cmd+F to bubble up for searching
+        if (isCtrlOrMeta && isF) {
+          return false;
+        }
+
+        // Allow F5 to bubble up for global reload prevention
+        if (isF5) {
+          return false;
+        }
+
+        return true;
+      });
+
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
 
@@ -234,32 +254,52 @@ export default function TerminalTab({ tab, onStatusChange }) {
   // Refit whenever terminal status shifts to connected (ensures prompt size maps correctly)
   useEffect(() => {
     if (status === 'connected' && terminalRef.current && fitAddonRef.current) {
-      setTimeout(() => {
+      const performFit = () => {
         try {
-          fitAddonRef.current.fit();
-          // Send active resize update to remote host
-          const cols = terminalRef.current.cols;
-          const rows = terminalRef.current.rows;
-          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-            socketRef.current.send(JSON.stringify({ type: 'resize', cols, rows }));
+          if (terminalRef.current && fitAddonRef.current) {
+            fitAddonRef.current.fit();
+            // Send active resize update to remote host
+            const cols = terminalRef.current.cols;
+            const rows = terminalRef.current.rows;
+            if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+              socketRef.current.send(JSON.stringify({ type: 'resize', cols, rows }));
+            }
           }
         } catch (err) {
           console.error('Post-connection resize alignment failed:', err);
         }
-      }, 100);
+      };
+
+      performFit();
+      const timer = setTimeout(performFit, 100);
+      const timerLong = setTimeout(performFit, 500);
+      document.fonts.ready.then(performFit);
+
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(timerLong);
+      };
     }
   }, [status]);
 
   // Refit terminal when switching views
   useEffect(() => {
     if (viewMode === 'terminal' && status === 'connected' && terminalRef.current && fitAddonRef.current) {
-      setTimeout(() => {
+      const performFit = () => {
         try {
-          fitAddonRef.current.fit();
+          if (terminalRef.current && fitAddonRef.current) {
+            fitAddonRef.current.fit();
+          }
         } catch (err) {
           // Ignore
         }
-      }, 50);
+      };
+
+      performFit();
+      const timer = setTimeout(performFit, 50);
+      document.fonts.ready.then(performFit);
+
+      return () => clearTimeout(timer);
     }
   }, [viewMode, status]);
 

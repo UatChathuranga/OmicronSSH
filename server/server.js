@@ -10,7 +10,8 @@ import {
   getConnectionById,
   createConnection,
   updateConnection,
-  deleteConnection
+  deleteConnection,
+  bulkCreateConnections
 } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -53,6 +54,19 @@ app.post('/api/connections', (req, res) => {
   try {
     const newConn = createConnection(req.body);
     res.status(201).json(newConn);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/connections/bulk', (req, res) => {
+  try {
+    const { group, connections } = req.body;
+    if (!connections || !Array.isArray(connections)) {
+      return res.status(400).json({ error: 'connections array is required' });
+    }
+    const createdList = bulkCreateConnections(connections, group);
+    res.status(201).json(createdList);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

@@ -351,7 +351,8 @@
 }
 
 .tabs-list::-webkit-scrollbar {
-  display: none; /* Hide tabbar scrollbar */
+  display: none;
+  /* Hide tabbar scrollbar */
 }
 
 .tab-item {
@@ -383,7 +384,7 @@
   background: rgba(15, 23, 42, 0.7);
   border-color: var(--panel-border);
   border-bottom: 2px solid var(--accent-primary);
-  box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .tab-status-glow {
@@ -591,7 +592,9 @@
   letter-spacing: 0.5px;
 }
 
-.form-input, .form-select, .form-textarea {
+.form-input,
+.form-select,
+.form-textarea {
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid var(--panel-border);
   border-radius: 8px;
@@ -603,7 +606,9 @@
   width: 100%;
 }
 
-.form-input:focus, .form-select:focus, .form-textarea:focus {
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 2px var(--panel-border-glow);
 }
@@ -656,14 +661,14 @@
   justify-content: space-between;
   padding: 12px 14px;
   border-radius: 8px;
-  background: rgba(255,255,255,0.01);
-  border: 1px solid rgba(255,255,255,0.03);
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid rgba(255, 255, 255, 0.03);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .recent-conn-item:hover {
-  background: rgba(255,255,255,0.03);
+  background: rgba(255, 255, 255, 0.03);
   border-color: var(--panel-border);
   transform: translateX(2px);
 }
@@ -812,7 +817,7 @@
 }
 
 .modal-close-btn:hover {
-  background: rgba(255,255,255,0.06);
+  background: rgba(255, 255, 255, 0.06);
   color: #fff;
 }
 
@@ -879,8 +884,10 @@
 
 .terminal-canvas {
   width: 100%;
-  height: 100%;
-  padding: 10px;
+  flex: 1;
+  min-height: 0;
+  padding: 10px 14px;
+  margin-bottom: 10px;
   box-sizing: border-box;
 }
 
@@ -952,7 +959,7 @@
 
 .terminal-reconnect-btn:hover {
   background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255,255,255,0.2);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .terminal-reconnect-btn svg {
@@ -963,14 +970,30 @@
 
 /* Animations */
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes pulse {
-  0% { box-shadow: 0 0 4px var(--status-connecting); opacity: 0.7; }
-  50% { box-shadow: 0 0 12px var(--status-connecting); opacity: 1; }
-  100% { box-shadow: 0 0 4px var(--status-connecting); opacity: 0.7; }
+  0% {
+    box-shadow: 0 0 4px var(--status-connecting);
+    opacity: 0.7;
+  }
+
+  50% {
+    box-shadow: 0 0 12px var(--status-connecting);
+    opacity: 1;
+  }
+
+  100% {
+    box-shadow: 0 0 4px var(--status-connecting);
+    opacity: 0.7;
+  }
 }
 
 /* Custom styles for xterm.js theme */
@@ -981,9 +1004,7 @@
 .xterm {
   height: 100%;
 }
-.xterm-screen {
-  height: 100% !important;
-}
+
 .xterm-rows {
   font-family: var(--font-mono) !important;
 }
@@ -1029,12 +1050,11 @@
   stroke-width: 2.5;
 }
 
-/* SFTP Explorer Interface */
 .sftp-explorer {
-  flex-grow: 1;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  height: calc(100% - 39px); /* Subtract mode selector height */
   background: rgba(10, 15, 26, 0.6);
   position: relative;
 }
@@ -1165,7 +1185,8 @@
   position: relative;
 }
 
-.sftp-loading, .sftp-error {
+.sftp-loading,
+.sftp-error {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1244,11 +1265,13 @@
 }
 
 .folder-svg {
-  color: #fbbf24; /* Warm yellow folder color */
+  color: #fbbf24;
+  /* Warm yellow folder color */
 }
 
 .file-svg {
-  color: #94a3b8; /* Slate file icon color */
+  color: #94a3b8;
+  /* Slate file icon color */
 }
 
 .file-name-text {
@@ -1286,11 +1309,13 @@
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
-  opacity: 0; /* Hidden by default, appears on row hover */
+  opacity: 0;
+  /* Hidden by default, appears on row hover */
 }
 
 .sftp-table tr:hover .sftp-icon-btn {
-  opacity: 1; /* Fade-in action buttons on row hover */
+  opacity: 1;
+  /* Fade-in action buttons on row hover */
 }
 
 .sftp-icon-btn:hover {
@@ -1567,4 +1592,221 @@
   object-fit: contain;
   box-sizing: border-box;
   padding: 2px;
+}
+
+/* Tab Context Menu */
+.tab-context-menu {
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  user-select: none;
+  animation: fadeInContextMenu 0.15s ease-out;
+}
+
+@keyframes fadeInContextMenu {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.context-menu-item:hover {
+  color: var(--text-primary);
+  background: rgba(99, 102, 241, 0.15);
+}
+
+.context-menu-item.close:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.context-menu-item svg {
+  opacity: 0.7;
+}
+
+.context-menu-item:hover svg {
+  opacity: 1;
+}
+
+/* Sidebar header actions styling */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bulk-import-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--panel-border);
+  outline: none;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.bulk-import-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--accent-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+}
+
+.bulk-import-btn svg {
+  width: 15px;
+  height: 15px;
+  stroke: var(--text-secondary);
+  stroke-width: 2;
+  transition: stroke 0.2s ease;
+}
+
+.bulk-import-btn:hover svg {
+  stroke: var(--text-primary);
+}
+
+/* Bulk Import Modal and Components */
+.bulk-import-modal {
+  max-width: 480px;
+}
+
+.csv-format-help {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.help-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.format-code {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.08);
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px dashed rgba(99, 102, 241, 0.3);
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+.help-text {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.file-upload-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.file-upload-label-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--panel-border);
+  border-radius: 8px;
+  padding: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.file-upload-label-btn:hover {
+  background: rgba(99, 102, 241, 0.04);
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.file-upload-label-btn svg {
+  color: var(--text-secondary);
+  transition: color 0.2s ease;
+}
+
+.file-upload-label-btn:hover svg {
+  color: var(--accent-primary);
+}
+
+.file-upload-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(16, 185, 129, 0.05);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  animation: fadeIn 0.2s ease;
+}
+
+.file-name-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+.file-rows-badge {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.error-banner {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #f87171;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 10px 12px;
+  border-radius: 6px;
+  line-height: 1.4;
 }
