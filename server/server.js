@@ -294,6 +294,7 @@ wss.on('connection', (ws) => {
   let sshStream = null;
   let connectionEstablished = false;
   let sessionTabId = null;
+  let statsInterval = null;
 
   const sendStatus = (status, error = null) => {
     if (ws.readyState === ws.OPEN) {
@@ -369,6 +370,48 @@ wss.on('connection', (ws) => {
             }
             sendStatus('connected');
 
+            // Start periodic VM stats monitoring
+            if (!msg.hideStats) {
+              statsInterval = setInterval(() => {
+                if (!connectionEstablished || !sshClient || ws.readyState !== ws.OPEN) {
+                  clearInterval(statsInterval);
+                  return;
+                }
+                
+                sshClient.exec('ram=$(free -m 2>/dev/null | awk \'/Mem:/ {print $2,$3}\'); [ -z "$ram" ] && ram="0 0"; disk=$(df -m / 2>/dev/null | awk \'NR==2 {print $2,$3}\'); [ -z "$disk" ] && disk="0 0"; load=$(cat /proc/loadavg 2>/dev/null | awk \'{print $1,$2,$3}\'); [ -z "$load" ] && load="0 0 0"; net=$(cat /proc/net/dev 2>/dev/null | awk \'NR>2 {rx+=$2; tx+=$10} END {print rx,tx}\'); [ -z "$net" ] && net="0 0"; echo "METRICS|$ram|$disk|$load|$net"', (err, execStream) => {
+                  if (err) return;
+                  
+                  let output = '';
+                  execStream.on('data', (data) => {
+                    output += data.toString();
+                  });
+                  execStream.on('close', () => {
+                    if (output.startsWith('METRICS|')) {
+                      const parts = output.trim().split('|');
+                      if (parts.length >= 5) {
+                        const [memTotal, memUsed] = parts[1].split(' ').map(Number);
+                        const [diskTotal, diskUsed] = parts[2].split(' ').map(Number);
+                        const [load1, load5, load15] = parts[3].split(' ').map(Number);
+                        const [rxBytes, txBytes] = parts[4].split(' ').map(Number);
+                        
+                        if (ws.readyState === ws.OPEN) {
+                          ws.send(JSON.stringify({
+                            type: 'stats',
+                            stats: {
+                              memory: { total: memTotal, used: memUsed },
+                              disk: { total: diskTotal, used: diskUsed },
+                              load: { load1, load5, load15 },
+                              network: { rx: rxBytes, tx: txBytes }
+                            }
+                          }));
+                        }
+                      }
+                    }
+                  });
+                });
+              }, 3000);
+            }
+
             // Pipe SSH stream output to WebSocket
             stream.on('data', (data) => {
               if (ws.readyState === ws.OPEN) {
@@ -412,6 +455,9 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    if (statsInterval) {
+      clearInterval(statsInterval);
+    }
     // Cleanup SSH connection on socket closure
     if (sessionTabId) {
       activeSessions.delete(sessionTabId);

@@ -4,7 +4,7 @@ import { FitAddon } from 'xterm-addon-fit';
 import SftpExplorer from './SftpExplorer';
 import 'xterm/css/xterm.css';
 
-export default function TerminalTab({ tab, onStatusChange, onRegisterSocket }) {
+export default function TerminalTab({ tab, onStatusChange, onRegisterSocket, isSplit }) {
   const containerRef = useRef(null);
   const terminalRef = useRef(null);
   const fitAddonRef = useRef(null);
@@ -12,6 +12,11 @@ export default function TerminalTab({ tab, onStatusChange, onRegisterSocket }) {
   const [status, setStatus] = useState('connecting'); // 'connecting', 'connected', 'disconnected'
   const [errorMsg, setErrorMsg] = useState(null);
   const [viewMode, setViewMode] = useState('terminal'); // 'terminal' or 'files'
+  
+  // VM specifications and usage stats
+  const [stats, setStats] = useState(null);
+  const [speeds, setSpeeds] = useState({ rxSpeed: 0, txSpeed: 0 });
+  const lastStatsTimeRef = useRef(null);
 
   const statusRef = useRef('connecting');
   const viewModeRef = useRef('terminal');
@@ -144,6 +149,10 @@ export default function TerminalTab({ tab, onStatusChange, onRegisterSocket }) {
         Object.assign(initPayload, tab.quickConnectDetails);
       }
 
+      if (isSplit) {
+        initPayload.hideStats = true;
+      }
+
       socket.send(JSON.stringify(initPayload));
     };
 
@@ -160,6 +169,22 @@ export default function TerminalTab({ tab, onStatusChange, onRegisterSocket }) {
           }
         } else if (msg.type === 'data') {
           term.write(colorizeText(msg.data));
+        } else if (msg.type === 'stats') {
+          const now = Date.now();
+          setStats(current => {
+            if (current && lastStatsTimeRef.current) {
+              const timeDiff = (now - lastStatsTimeRef.current) / 1000;
+              if (timeDiff > 0) {
+                const rxDiff = msg.stats.network.rx - current.network.rx;
+                const txDiff = msg.stats.network.tx - current.network.tx;
+                const rxSpeed = rxDiff >= 0 ? rxDiff / timeDiff : 0;
+                const txSpeed = txDiff >= 0 ? txDiff / timeDiff : 0;
+                setSpeeds({ rxSpeed, txSpeed });
+              }
+            }
+            lastStatsTimeRef.current = now;
+            return msg.stats;
+          });
         }
       } catch (err) {
         console.error('Failed to parse WebSocket message:', err);
@@ -349,6 +374,19 @@ export default function TerminalTab({ tab, onStatusChange, onRegisterSocket }) {
     URL.revokeObjectURL(url);
   };
 
+  const formatMB = (mb) => {
+    if (!mb) return '0 GB';
+    if (mb < 1024) return `${mb} MB`;
+    return `${(mb / 1024).toFixed(1)} GB`;
+  };
+
+  const formatSpeed = (bytesPerSec) => {
+    if (bytesPerSec === undefined || bytesPerSec === null) return '0 B/s';
+    if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`;
+    if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+    return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+  };
+
   return (
     <div className="terminal-wrapper">
       {status === 'connected' && (
@@ -395,6 +433,87 @@ export default function TerminalTab({ tab, onStatusChange, onRegisterSocket }) {
         ref={containerRef} 
         style={{ display: viewMode === 'terminal' ? 'block' : 'none' }} 
       />
+
+      {viewMode === 'terminal' && status === 'connected' && stats && !isSplit && (
+        <div className="terminal-metrics-bar">
+          {/* CPU / Load Average */}
+          <div className="metric-item load-metric">
+            <span className="metric-label">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              Load Avg
+            </span>
+            <span className="metric-val">{stats.load.load1.toFixed(2)} / {stats.load.load5.toFixed(2)} / {stats.load.load15.toFixed(2)}</span>
+          </div>
+
+          {/* Memory Usage */}
+          <div className="metric-item memory-metric">
+            <span className="metric-label">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 5h10a2 2 0 012 2v10a2 2 0 01-2 2H7a2 2 0 01-2 2V7a2 2 0 012-2z" />
+              </svg>
+              RAM
+            </span>
+            <div className="metric-progress-wrapper">
+              <div className="metric-progress-track">
+                <div 
+                  className="metric-progress-fill" 
+                  style={{ width: `${Math.min(100, (stats.memory.used / stats.memory.total) * 100)}%` }} 
+                />
+              </div>
+              <span className="metric-val">
+                {formatMB(stats.memory.used)} / {formatMB(stats.memory.total)} ({((stats.memory.used / stats.memory.total) * 100).toFixed(1)}%)
+              </span>
+            </div>
+          </div>
+
+          {/* Disk Usage */}
+          <div className="metric-item disk-metric">
+            <span className="metric-label">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+              </svg>
+              Disk
+            </span>
+            <div className="metric-progress-wrapper">
+              <div className="metric-progress-track">
+                <div 
+                  className="metric-progress-fill warning" 
+                  style={{ width: `${Math.min(100, (stats.disk.used / stats.disk.total) * 100)}%` }} 
+                />
+              </div>
+              <span className="metric-val">
+                {formatMB(stats.disk.used)} / {formatMB(stats.disk.total)} ({((stats.disk.used / stats.disk.total) * 100).toFixed(1)}%)
+              </span>
+            </div>
+          </div>
+
+          {/* Network Usage */}
+          <div className="metric-item network-metric">
+            <span className="metric-label">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+              Net
+            </span>
+            <div className="metric-net-speeds">
+              <span className="net-speed down">
+                <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="3">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                </svg>
+                {formatSpeed(speeds.rxSpeed)}
+              </span>
+              <span className="net-speed up">
+                <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="3">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                </svg>
+                {formatSpeed(speeds.txSpeed)}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {viewMode === 'files' && status === 'connected' && (
         <SftpExplorer tabId={tab.id} />

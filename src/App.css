@@ -2080,7 +2080,7 @@
 }
 
 .split-cell-terminal .terminal-canvas {
-  height: calc(100% - 32px); /* Adjust based on mode selector visibility */
+  height: auto;
 }
 
 /* Empty Cell styling inside Split Grid */
@@ -2260,4 +2260,116 @@
   font-size: 0.75rem;
   border-radius: 0;
   cursor: pointer;
+}
+
+/* Terminal Metrics Dashboard Bar */
+.terminal-metrics-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: rgba(10, 15, 26, 0.85);
+  border-top: 1px solid var(--panel-border);
+  padding: 6px 16px;
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  user-select: none;
+  backdrop-filter: blur(10px);
+  flex-wrap: wrap;
+}
+
+.metric-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.metric-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+}
+
+.metric-label svg {
+  color: var(--accent-primary);
+}
+
+.metric-val {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* Progress bar style for RAM/Disk */
+.metric-progress-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.metric-progress-track {
+  width: 60px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.metric-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #818cf8);
+  border-radius: 3px;
+  transition: width 0.5s ease-out;
+}
+
+.metric-progress-fill.warning {
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+}
+
+/* Network Speeds */
+.metric-net-speeds {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.net-speed {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.net-speed.down {
+  color: #10b981; /* Green */
+}
+
+.net-speed.up {
+  color: #3b82f6; /* Blue */
+}
+
+.net-speed svg {
+  margin-top: 1px;
+}
+
+.load-metric .metric-val {
+  color: #f59e0b; /* Amber */
+}
+
+/* Compact headers and small layouts inside split grid cells */
+.split-grid.compact-headers .terminal-metrics-bar {
+  gap: 10px;
+  padding: 4px 8px;
+  font-size: 0.68rem;
+}
+
+.split-grid.compact-headers .metric-progress-track {
+  display: none;
 }

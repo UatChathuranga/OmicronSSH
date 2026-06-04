@@ -363,6 +363,7 @@ export default function SplitTab({
                 tab={subTab}
                 onStatusChange={() => {}}
                 onRegisterSocket={handleRegisterSocket}
+                isSplit={true}
               />
             </div>
           </div>
